@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "405135203720",
+    "project_id": "artykul-course",
+    "storage_bucket": "artykul-course.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:405135203720:android:f6c8b9e49a4dacb227ae3d",
+        "android_client_info": {
+          "package_name": "com.example.artykul"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDAreGLjnkTf5NKLtDjocAkWwoI1Bs6EDo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

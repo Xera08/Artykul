@@ -19,8 +19,11 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.example.artykul.ui.AdminLoginScreen
+import com.example.artykul.ui.UsersList
 import com.example.artykul.ui.theme.ArtykulTheme
+import com.google.firebase.Firebase
+import com.google.firebase.FirebaseApp
+
 
 
 class MainActivity : ComponentActivity() {
@@ -29,6 +32,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             ArtykulTheme {
+
                 ArtykulApp()
             }
         }
@@ -40,6 +44,8 @@ fun ArtykulApp() {
     ArtykulTheme {
         var currentScreen = remember { mutableStateOf(ChooseRole) }
         val navController = rememberNavController()
+        //Firebase.initializeApp(context)
+
 
         Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
             NavHost(
@@ -56,8 +62,23 @@ fun ArtykulApp() {
                 composable(route = UserLogin.route) {
                     UserLogin.screen(navController)
                 }
+                composable(route = AdminRegister.route) {
+                    AdminRegister.screen(navController)
+                }
+                composable(route = UsersList.route) { backStackEntry ->
+                    val master = backStackEntry.arguments?.getString("master")
+                    if (master != null) {
+                        UsersList(master = master)
+                    }
+                }
             }
-        }
 
+        }
     }
 }
+
+
+
+
+
+
