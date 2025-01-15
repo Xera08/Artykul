@@ -154,6 +154,7 @@ fun EditUserDialog(
     val email = remember { mutableStateOf(user.email) }
     val password = remember { mutableStateOf(user.password) }
     val showDeleteConfirmation = remember { mutableStateOf(false) }
+    val emailError = remember { mutableStateOf("") } // To store email validation errors
 
     if (showDeleteConfirmation.value) {
         androidx.compose.material3.AlertDialog(
@@ -189,10 +190,22 @@ fun EditUserDialog(
                 )
                 TextField(
                     value = email.value,
-                    onValueChange = { email.value = it },
+                    onValueChange = {
+                        email.value = it
+                        emailError.value = if (isValidGmail(it)) "" else "Invalid email format"
+                    },
                     label = { Text("Email") },
-                    modifier = Modifier.padding(8.dp)
+                    modifier = Modifier.padding(8.dp),
+                    isError = emailError.value.isNotEmpty() // Highlight the field if there is an error
                 )
+                if (emailError.value.isNotEmpty()) {
+                    Text(
+                        text = emailError.value,
+                        color = Color.Red,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(start = 8.dp)
+                    )
+                }
                 TextField(
                     value = password.value,
                     onValueChange = { password.value = it },
@@ -203,7 +216,9 @@ fun EditUserDialog(
         },
         confirmButton = {
             Button(onClick = {
-                onUpdate(User(name.value, email.value, password.value))
+                if (emailError.value.isEmpty()) { // Proceed only if the email is valid
+                    onUpdate(User(name.value, email.value, password.value))
+                }
             }) {
                 Text("Update")
             }
@@ -220,6 +235,12 @@ fun EditUserDialog(
         }
     )
 }
+
+// Helper function to validate email format
+fun isValidGmail(email: String): Boolean {
+    return email.count { it == '@' } == 1 && email.endsWith("@gmail.com")
+}
+
 
 fun updateUserInFirestore(
     originalEmail: String, // Pass the original email before editing
@@ -287,6 +308,8 @@ fun AddUserDialog(
     email: MutableState<String>,
     password: MutableState<String>
 ) {
+    val emailError = remember { mutableStateOf("") } // To store email validation errors
+
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add New User") },
@@ -300,10 +323,22 @@ fun AddUserDialog(
                 )
                 TextField(
                     value = email.value,
-                    onValueChange = { email.value = it },
+                    onValueChange = {
+                        email.value = it
+                        emailError.value = if (isValidGmail(it)) "" else "Invalid email format"
+                    },
                     label = { Text("Email") },
-                    modifier = Modifier.padding(8.dp)
+                    modifier = Modifier.padding(8.dp),
+                    isError = emailError.value.isNotEmpty() // Highlight the field if there is an error
                 )
+                if (emailError.value.isNotEmpty()) {
+                    Text(
+                        text = emailError.value,
+                        color = Color.Red,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(start = 8.dp)
+                    )
+                }
                 TextField(
                     value = password.value,
                     onValueChange = { password.value = it },
@@ -315,7 +350,7 @@ fun AddUserDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    if (name.value.isNotEmpty() && email.value.isNotEmpty() && password.value.isNotEmpty()) {
+                    if (name.value.isNotEmpty() && emailError.value.isEmpty() && password.value.isNotEmpty()) {
                         // Submitting the data
                         onSubmit(name.value, email.value, password.value)
                     }
