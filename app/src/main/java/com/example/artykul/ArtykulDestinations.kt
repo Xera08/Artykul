@@ -2,6 +2,7 @@ package com.example.artykul
 
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavController
+import com.example.artykul.ui.ItemsList
 import com.example.artykul.ui.UsersList
 import com.example.artykul.ui.loginscreens.AdminRegisterScreen
 import com.example.artykul.ui.loginscreens.AdminLoginScreen
@@ -36,10 +37,11 @@ object UserLogin : ArtykulDestination {
 
 object UsersList : ArtykulDestination {
     override val route = "usersList/{master}" // 'master' is the parameter
-    override val screen: @Composable (navController: NavController) -> Unit = { navController ->
-        val master = navController.previousBackStackEntry?.arguments?.getString("master")
-        if (master != null) {
-            UsersList(master = master)
-        }
-    }
+    override val screen: @Composable (navController: NavController) -> Unit = { navController -> UsersList()}
 }
+
+object ItemsList : ArtykulDestination {
+    override val route = "itemsList"
+    override val screen: @Composable (NavController) -> Unit = {ItemsList()}
+}
+

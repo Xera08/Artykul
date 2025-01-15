@@ -56,7 +56,7 @@ fun UserLoginScreen(navController: NavController) {
                         email = userEmail.value,
                         password = userPassword.value,
                         onSuccess = {
-                            navController.navigate("UserDashboard")
+                            navController.navigate("ItemsList")
                         },
                         onFailure = { error ->
                             Log.e("UserLogin", error)

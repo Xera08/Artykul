@@ -19,6 +19,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.artykul.ui.ItemsList
 import com.example.artykul.ui.UsersList
 import com.example.artykul.ui.theme.ArtykulTheme
 import com.google.firebase.Firebase
@@ -65,11 +66,11 @@ fun ArtykulApp() {
                 composable(route = AdminRegister.route) {
                     AdminRegister.screen(navController)
                 }
-                composable(route = UsersList.route) { backStackEntry ->
-                    val master = backStackEntry.arguments?.getString("master")
-                    if (master != null) {
-                        UsersList(master = master)
+                composable(route = UsersList.route) {
+                        UsersList.screen(navController)
                     }
+                composable(route = ItemsList.route) {
+                    ItemsList.screen(navController)
                 }
             }
 
