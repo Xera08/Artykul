@@ -7,24 +7,20 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.navigation.NavController
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.QuerySnapshot
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.google.firebase.firestore.FirebaseFirestore
 
 data class User(val name: String, val email: String, val password: String)
 
@@ -35,11 +31,11 @@ fun UsersList() {
     val showDialog = remember { mutableStateOf(false) }
     val selectedUser = remember { mutableStateOf<User?>(null) }
 
-    // Fetch users from Firestore
-    LaunchedEffect(true) {
+    // Function to fetch users from Firestore
+    fun refreshUsers() {
         firestore.collection("users")
             .get()
-            .addOnSuccessListener { result: QuerySnapshot ->
+            .addOnSuccessListener { result ->
                 val fetchedUsers = result.map { document ->
                     User(
                         name = document.getString("name") ?: "",
@@ -52,6 +48,11 @@ fun UsersList() {
             .addOnFailureListener { exception ->
                 println("Error fetching users: ${exception.message}")
             }
+    }
+
+    // Fetch users initially
+    LaunchedEffect(Unit) {
+        refreshUsers()
     }
 
     Column {
@@ -80,10 +81,23 @@ fun UsersList() {
         if (showDialog.value) {
             AddUserDialog(
                 onDismiss = { showDialog.value = false },
-                onSubmit = { nameValue, emailValue, passwordValue ->
-                    val newUser = User(nameValue, emailValue, passwordValue)
-                    addUserToFirestore(newUser, firestore)
-                    showDialog.value = false
+                onSubmit = { newUser ->
+                    firestore.collection("users")
+                        .add(
+                            hashMapOf(
+                                "name" to newUser.name,
+                                "email" to newUser.email,
+                                "password" to newUser.password
+                            )
+                        )
+                        .addOnSuccessListener {
+                            println("User added successfully!")
+                            refreshUsers() // Refresh the users' list after adding
+                            showDialog.value = false
+                        }
+                        .addOnFailureListener { exception ->
+                            println("Error adding user: ${exception.message}")
+                        }
                 },
                 name = remember { mutableStateOf("") },
                 email = remember { mutableStateOf("") },
@@ -97,7 +111,7 @@ fun UsersList() {
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(8.dp)
-                    .border(2.dp, Color.LightGray)
+                    .border(1.dp, Color.Gray)
                     .padding(8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
@@ -105,12 +119,10 @@ fun UsersList() {
                 Text(
                     text = user.name,
                     modifier = Modifier.padding(10.dp),
-                    fontSize = 24.sp
+                    fontSize = 18.sp
                 )
                 Button(
-                    onClick = {
-                        selectedUser.value = user
-                    }
+                    onClick = { selectedUser.value = user }
                 ) {
                     Text("Edit")
                 }
@@ -124,22 +136,86 @@ fun UsersList() {
                 firestore = firestore,
                 onDismiss = { selectedUser.value = null },
                 onUpdate = { updatedUser ->
-                    updateUserInFirestore(user.email, updatedUser, firestore) { // Use original email
+                    updateUserInFirestore(user.email, updatedUser, firestore) {
                         selectedUser.value = null
-                        usersList.value = usersList.value.map {
-                            if (it.email == user.email) updatedUser else it
-                        }
+                        refreshUsers() // Refresh the users' list after editing
                     }
                 },
                 onDelete = {
                     deleteUserFromFirestore(user, firestore) {
                         selectedUser.value = null
-                        usersList.value = usersList.value.filterNot { it.email == user.email }
+                        refreshUsers() // Refresh the users' list after deleting
                     }
                 }
             )
         }
     }
+}
+
+@Composable
+fun AddUserDialog(
+    onDismiss: () -> Unit,
+    onSubmit: (User) -> Unit,
+    name: MutableState<String>,
+    email: MutableState<String>,
+    password: MutableState<String>
+) {
+    val errorMessage = remember { mutableStateOf("") }
+
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add New User") },
+        text = {
+            Column {
+                TextField(
+                    value = name.value,
+                    onValueChange = { name.value = it },
+                    label = { Text("Name") },
+                    modifier = Modifier.padding(8.dp)
+                )
+                TextField(
+                    value = email.value,
+                    onValueChange = { email.value = it },
+                    label = { Text("Email") },
+                    modifier = Modifier.padding(8.dp)
+                )
+                TextField(
+                    value = password.value,
+                    onValueChange = { password.value = it },
+                    label = { Text("Password") },
+                    modifier = Modifier.padding(8.dp)
+                )
+                if (errorMessage.value.isNotEmpty()) {
+                    Text(
+                        text = errorMessage.value,
+                        color = Color.Red,
+                        modifier = Modifier.padding(8.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (!email.value.contains('@') || !email.value.endsWith("gmail.com")) {
+                        errorMessage.value = "Invalid email! Must be a valid Gmail address."
+                    } else if (name.value.isBlank() || password.value.isBlank()) {
+                        errorMessage.value = "All fields must be filled."
+                    } else {
+                        errorMessage.value = ""
+                        onSubmit(User(name.value, email.value, password.value))
+                    }
+                }
+            ) {
+                Text("OK")
+            }
+        },
+        dismissButton = {
+            Button(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 @Composable
@@ -153,8 +229,8 @@ fun EditUserDialog(
     val name = remember { mutableStateOf(user.name) }
     val email = remember { mutableStateOf(user.email) }
     val password = remember { mutableStateOf(user.password) }
+    val errorMessage = remember { mutableStateOf("") }
     val showDeleteConfirmation = remember { mutableStateOf(false) }
-    val emailError = remember { mutableStateOf("") } // To store email validation errors
 
     if (showDeleteConfirmation.value) {
         androidx.compose.material3.AlertDialog(
@@ -190,33 +266,33 @@ fun EditUserDialog(
                 )
                 TextField(
                     value = email.value,
-                    onValueChange = {
-                        email.value = it
-                        emailError.value = if (isValidGmail(it)) "" else "Invalid email format"
-                    },
+                    onValueChange = { email.value = it },
                     label = { Text("Email") },
-                    modifier = Modifier.padding(8.dp),
-                    isError = emailError.value.isNotEmpty() // Highlight the field if there is an error
+                    modifier = Modifier.padding(8.dp)
                 )
-                if (emailError.value.isNotEmpty()) {
-                    Text(
-                        text = emailError.value,
-                        color = Color.Red,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
-                }
                 TextField(
                     value = password.value,
                     onValueChange = { password.value = it },
                     label = { Text("Password") },
                     modifier = Modifier.padding(8.dp)
                 )
+                if (errorMessage.value.isNotEmpty()) {
+                    Text(
+                        text = errorMessage.value,
+                        color = Color.Red,
+                        modifier = Modifier.padding(8.dp)
+                    )
+                }
             }
         },
         confirmButton = {
             Button(onClick = {
-                if (emailError.value.isEmpty()) { // Proceed only if the email is valid
+                if (!email.value.contains('@') || !email.value.endsWith("gmail.com")) {
+                    errorMessage.value = "Invalid email! Must be a valid Gmail address."
+                } else if (name.value.isBlank() || password.value.isBlank()) {
+                    errorMessage.value = "All fields must be filled."
+                } else {
+                    errorMessage.value = ""
                     onUpdate(User(name.value, email.value, password.value))
                 }
             }) {
@@ -236,25 +312,20 @@ fun EditUserDialog(
     )
 }
 
-// Helper function to validate email format
-fun isValidGmail(email: String): Boolean {
-    return email.count { it == '@' } == 1 && email.endsWith("@gmail.com")
-}
 
-
+// Functions to handle Firestore operations
 fun updateUserInFirestore(
-    originalEmail: String, // Pass the original email before editing
+    originalEmail: String,
     updatedUser: User,
     firestore: FirebaseFirestore,
     onComplete: () -> Unit
 ) {
     firestore.collection("users")
-        .whereEqualTo("email", originalEmail) // Query using the original email
+        .whereEqualTo("email", originalEmail)
         .get()
         .addOnSuccessListener { result ->
             val document = result.documents.firstOrNull()
             if (document != null) {
-                // Update the document by its ID
                 firestore.collection("users").document(document.id)
                     .set(
                         hashMapOf(
@@ -263,20 +334,12 @@ fun updateUserInFirestore(
                             "password" to updatedUser.password,
                         )
                     )
-                    .addOnSuccessListener {
-                        println("User updated successfully!")
-                        onComplete()
-                    }
-                    .addOnFailureListener { exception ->
-                        println("Error updating user: ${exception.message}")
-                    }
+                    .addOnSuccessListener { onComplete() }
+                    .addOnFailureListener { println("Error updating user: ${it.message}") }
             }
         }
-        .addOnFailureListener { exception ->
-            println("Error fetching user for update: ${exception.message}")
-        }
+        .addOnFailureListener { println("Error fetching user for update: ${it.message}") }
 }
-
 
 fun deleteUserFromFirestore(user: User, firestore: FirebaseFirestore, onComplete: () -> Unit) {
     firestore.collection("users")
@@ -287,101 +350,10 @@ fun deleteUserFromFirestore(user: User, firestore: FirebaseFirestore, onComplete
             if (document != null) {
                 firestore.collection("users").document(document.id)
                     .delete()
-                    .addOnSuccessListener {
-                        println("User deleted successfully!")
-                        onComplete()
-                    }
-                    .addOnFailureListener { exception ->
-                        println("Error deleting user: ${exception.message}")
-                    }
+                    .addOnSuccessListener { onComplete() }
+                    .addOnFailureListener { println("Error deleting user: ${it.message}") }
             }
         }
 }
 
-
-// Dialog to input new user information
-@Composable
-fun AddUserDialog(
-    onDismiss: () -> Unit,
-    onSubmit: (String, String, String) -> Unit,
-    name: MutableState<String>,
-    email: MutableState<String>,
-    password: MutableState<String>
-) {
-    val emailError = remember { mutableStateOf("") } // To store email validation errors
-
-    androidx.compose.material3.AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Add New User") },
-        text = {
-            Column {
-                TextField(
-                    value = name.value,
-                    onValueChange = { name.value = it },
-                    label = { Text("Name") },
-                    modifier = Modifier.padding(8.dp)
-                )
-                TextField(
-                    value = email.value,
-                    onValueChange = {
-                        email.value = it
-                        emailError.value = if (isValidGmail(it)) "" else "Invalid email format"
-                    },
-                    label = { Text("Email") },
-                    modifier = Modifier.padding(8.dp),
-                    isError = emailError.value.isNotEmpty() // Highlight the field if there is an error
-                )
-                if (emailError.value.isNotEmpty()) {
-                    Text(
-                        text = emailError.value,
-                        color = Color.Red,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
-                }
-                TextField(
-                    value = password.value,
-                    onValueChange = { password.value = it },
-                    label = { Text("Password") },
-                    modifier = Modifier.padding(8.dp)
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (name.value.isNotEmpty() && emailError.value.isEmpty() && password.value.isNotEmpty()) {
-                        // Submitting the data
-                        onSubmit(name.value, email.value, password.value)
-                    }
-                }
-            ) {
-                Text("OK")
-            }
-        },
-        dismissButton = {
-            Button(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
-    )
-}
-
-// Function to add the new user to Firestore
-fun addUserToFirestore(newUser: User, firestore: FirebaseFirestore) {
-    val userData = hashMapOf(
-        "name" to newUser.name,
-        "email" to newUser.email,
-        "password" to newUser.password,
-    )
-
-    firestore.collection("users")
-        .add(userData)
-        .addOnSuccessListener {
-            println("User added successfully!")
-        }
-        .addOnFailureListener { exception ->
-            println("Error adding user: ${exception.message}")
-        }
-}
 

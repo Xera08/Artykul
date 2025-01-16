@@ -23,54 +23,86 @@ import com.google.firebase.firestore.FirebaseFirestore
 
 @Composable
 fun AdminRegisterScreen(navController: NavController) {
-    var adminEmail = remember { mutableStateOf("example@gmail.com") }
-    var adminPassword = remember { mutableStateOf("") }
-    var adminPasswordConfirm = remember { mutableStateOf("") }
-    var showErrorDialog = remember { mutableStateOf(false) }
+    val adminEmail = remember { mutableStateOf("example@gmail.com") }
+    val adminPassword = remember { mutableStateOf("") }
+    val adminPasswordConfirm = remember { mutableStateOf("") }
+    val showErrorDialog = remember { mutableStateOf(false) }
+    val errorMessage = remember { mutableStateOf("") }
 
-
-    Column(modifier = Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(text = "ADMIN REGISTER SCREEN",
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "ADMIN REGISTER SCREEN",
             modifier = Modifier.padding(24.dp),
             fontSize = 24.sp
         )
-
 
         OutlinedTextField(
             value = adminEmail.value,
             onValueChange = { adminEmail.value = it },
             label = { Text(text = "email") },
-            modifier = Modifier
-                .padding(12.dp)
+            modifier = Modifier.padding(12.dp)
         )
 
         OutlinedTextField(
             value = adminPassword.value,
             onValueChange = { adminPassword.value = it },
             label = { Text(text = "password") },
-            modifier = Modifier
-                .padding(12.dp)
+            modifier = Modifier.padding(12.dp)
         )
 
         OutlinedTextField(
             value = adminPasswordConfirm.value,
             onValueChange = { adminPasswordConfirm.value = it },
             label = { Text(text = "confirm password") },
-            modifier = Modifier
-                .padding(12.dp)
+            modifier = Modifier.padding(12.dp)
         )
 
-        Button(modifier = Modifier.padding(24.dp),
+        Button(
+            modifier = Modifier.padding(24.dp),
             onClick = {
+                val email = adminEmail.value.trim()
+
+                // Check if email contains exactly one '@' symbol and ends with '@gmail.com'
                 if (adminPassword.value == adminPasswordConfirm.value) {
-                    // Add admin to Firestore and navigate back
-                    navController.navigate(AdminLogin.route)
+                    if (adminEmail.value.isNotEmpty() && adminPassword.value.isNotEmpty()) {
+                        if (email.count { it == '@' } == 1 && email.endsWith("@gmail.com")) {
+                            checkAdminEmail(
+                                email = adminEmail.value,
+                                onExists = {
+                                    errorMessage.value = "Email already registered. Please use a different email."
+                                    showErrorDialog.value = true
+                                },
+                                onDoesNotExist = {
+                                    registerAdmin(
+                                        email = adminEmail.value,
+                                        password = adminPassword.value,
+                                        onSuccess = {
+                                            navController.navigate(AdminLogin.route)
+                                        },
+                                        onFailure = { error ->
+                                            errorMessage.value = error
+                                            showErrorDialog.value = true
+                                        }
+                                    )
+                                }
+                            )
+                        } else {
+                            errorMessage.value = "Please enter a valid email ending with '@gmail.com' and containing exactly one '@'."
+                            showErrorDialog.value = true
+                        }
+                    } else {
+                        errorMessage.value = "Email and Password cannot be empty."
+                        showErrorDialog.value = true
+                    }
                 } else {
-                    // Show error dialog
+                    errorMessage.value = "Passwords do not match. Please try again."
                     showErrorDialog.value = true
                 }
-            }) {
+            }
+        ) {
             Text("Register")
         }
 
@@ -84,13 +116,33 @@ fun AdminRegisterScreen(navController: NavController) {
                     }
                 },
                 title = { Text("Error") },
-                text = { Text("Passwords do not match. Please try again.") }
+                text = { Text(errorMessage.value) }
             )
         }
-
     }
 }
 
+fun checkAdminEmail(
+    email: String,
+    onExists: () -> Unit,
+    onDoesNotExist: () -> Unit
+) {
+    val db = FirebaseFirestore.getInstance()
+
+    db.collection("admins")
+        .whereEqualTo("email", email)
+        .get()
+        .addOnSuccessListener { result ->
+            if (!result.isEmpty) {
+                onExists() // Email already exists
+            } else {
+                onDoesNotExist() // Email does not exist
+            }
+        }
+        .addOnFailureListener { e ->
+            Log.e("CheckAdminEmail", "Error checking email: ${e.message}")
+        }
+}
 
 fun registerAdmin(
     email: String,
@@ -107,6 +159,12 @@ fun registerAdmin(
 
     db.collection("admins")
         .add(admin)
-        .addOnSuccessListener { onSuccess() }
-        .addOnFailureListener { e -> onFailure(e.message ?: "Firestore error") }
+        .addOnSuccessListener {
+            Log.d("RegisterAdmin", "Admin registered successfully.")
+            onSuccess()
+        }
+        .addOnFailureListener { e ->
+            Log.e("RegisterAdmin", "Error registering admin: ${e.message}")
+            onFailure(e.message ?: "An error occurred.")
+        }
 }

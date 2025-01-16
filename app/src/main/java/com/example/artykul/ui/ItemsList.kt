@@ -20,43 +20,31 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.firebase.firestore.FirebaseFirestore
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 
 data class Item(val name: String, val room: String, val itemCode: String)
+
+
 
 @Composable
 fun ItemsList() {
     val firestore = FirebaseFirestore.getInstance()
     val itemsList = remember { mutableStateOf<List<Item>>(emptyList()) }
-    val showDialog = remember { mutableStateOf(false) }
-
-    // States for new item input
-    val name = remember { mutableStateOf("") }
-    val room = remember { mutableStateOf("") }
+    val selectedItem = remember { mutableStateOf<Item?>(null) }
+    val showEditDialog = remember { mutableStateOf(false) }
+    val showAddDialog = remember { mutableStateOf(false) }
 
     // Fetch items from Firestore
     LaunchedEffect(Unit) {
-        firestore.collection("items")
-            .get()
-            .addOnSuccessListener { result ->
-                val fetchedItems = result.map { document ->
-                    Item(
-                        name = document.getString("name") ?: "",
-                        room = document.getString("room") ?: "",
-                        itemCode = document.getString("itemCode") ?: ""
-                    )
-                }
-                itemsList.value = fetchedItems // Update the list once fetched
-            }
-            .addOnFailureListener { exception ->
-                println("Error fetching items: ${exception.message}")
-            }
+        fetchItemsFromFirestore(firestore) { fetchedItems ->
+            itemsList.value = fetchedItems.sortedBy { it.room }
+        }
     }
 
     Column(modifier = Modifier.padding(16.dp)) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
@@ -65,65 +53,251 @@ fun ItemsList() {
                 modifier = Modifier.weight(1f)
             )
             Button(
-                onClick = { showDialog.value = true },
+                onClick = { showAddDialog.value = true },
                 modifier = Modifier.padding(start = 8.dp)
             ) {
                 Text("Add Item")
             }
         }
 
-        // Displaying the list of items
-        itemsList.value.forEachIndexed { index, item ->
+
+    LazyColumn(modifier = Modifier.weight(1f)) {
+        items(itemsList.value) { item ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(8.dp)
                     .border(1.dp, Color.Gray)
-                    .padding(8.dp)
+                    .padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Name: ${item.name}",
-                        fontSize = 18.sp,
-                        modifier = Modifier.padding(bottom = 4.dp)
-                    )
-                    Text(
-                        text = "Room: ${item.room}",
-                        fontSize = 16.sp,
-                        modifier = Modifier.padding(bottom = 4.dp)
-                    )
+                    Text(text = "Name: ${item.name}", fontSize = 18.sp)
+                    Text(text = "Room: ${item.room}", fontSize = 16.sp)
+                    Text(text = "Code: ${item.itemCode}", fontSize = 16.sp)
                 }
-                Text(
-                    text = "Code: ${item.itemCode}",
-                    fontSize = 16.sp,
-                    modifier = Modifier.align(Alignment.CenterVertically)
-                )
+                Button(onClick = {
+                    selectedItem.value = item
+                    showEditDialog.value = true
+                }) {
+                    Text("Edit")
+                }
             }
         }
+    }
 
-        // Dialog for adding a new item
-        if (showDialog.value) {
+        // Add Item Dialog
+        if (showAddDialog.value) {
             AddItemDialog(
-                onDismiss = { showDialog.value = false },
-                onSubmit = { nameValue, roomValue ->
+                onDismiss = { showAddDialog.value = false },
+                onSubmit = { name, room ->
                     addItemToFirestore(
-                        name = nameValue,
-                        room = roomValue,
+                        name = name,
+                        room = room,
                         firestore = firestore
                     ) { newItem ->
-                        // Update the list with a copy of the new data
                         itemsList.value = itemsList.value.toMutableList().apply {
                             add(newItem)
                         }
+                        showAddDialog.value = false
                     }
-                    showDialog.value = false
+                }
+            )
+        }
+
+        // Edit Item Dialog
+        if (showEditDialog.value && selectedItem.value != null) {
+            EditItemDialog(
+                item = selectedItem.value!!,
+                onDismiss = { showEditDialog.value = false },
+                onUpdate = { updatedItem ->
+                    updateItemInFirestore(updatedItem, firestore) {
+                        itemsList.value = itemsList.value.map {
+                            if (it.itemCode == updatedItem.itemCode) updatedItem else it
+                        }
+                        showEditDialog.value = false
+                    }
                 },
-                name = name,
-                room = room
+                onDelete = { itemToDelete ->
+                    deleteItemFromFirestore(itemToDelete, firestore) {
+                        itemsList.value = itemsList.value.filter { it.itemCode != itemToDelete.itemCode }
+                        showEditDialog.value = false
+                    }
+                }
             )
         }
     }
 }
+
+@Composable
+fun AddItemDialog(
+    onDismiss: () -> Unit,
+    onSubmit: (String, String) -> Unit
+) {
+    val name = remember { mutableStateOf("") }
+    val room = remember { mutableStateOf("") }
+
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add New Item") },
+        text = {
+            Column {
+                TextField(
+                    value = name.value,
+                    onValueChange = { name.value = it },
+                    label = { Text("Item Name") },
+                    modifier = Modifier.padding(8.dp)
+                )
+                TextField(
+                    value = room.value,
+                    onValueChange = { if (it.length <= 3) room.value = it },
+                    label = { Text("Room (3 digits)") },
+                    modifier = Modifier.padding(8.dp)
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                if (name.value.isNotEmpty() && room.value.isNotEmpty()) {
+                    onSubmit(name.value, room.value)
+                }
+            }) {
+                Text("Add")
+            }
+        },
+        dismissButton = {
+            Button(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+
+@Composable
+fun EditItemDialog(
+    item: Item,
+    onDismiss: () -> Unit,
+    onUpdate: (Item) -> Unit,
+    onDelete: (Item) -> Unit
+) {
+    val name = remember { mutableStateOf(item.name) }
+    val room = remember { mutableStateOf(item.room) }
+
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit Item") },
+        text = {
+            Column {
+                TextField(
+                    value = name.value,
+                    onValueChange = { name.value = it },
+                    label = { Text("Item Name") },
+                    modifier = Modifier.padding(8.dp)
+                )
+                TextField(
+                    value = room.value,
+                    onValueChange = { if (it.length <= 3) room.value = it },
+                    label = { Text("Room (3 digits)") },
+                    modifier = Modifier.padding(8.dp)
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                if (name.value.isNotEmpty() && room.value.isNotEmpty()) {
+                    val updatedItem = item.copy(name = name.value, room = room.value)
+                    onUpdate(updatedItem)
+                }
+            }) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            Column {
+                Button(onClick = onDismiss) {
+                    Text("Cancel")
+                }
+                Button(onClick = { onDelete(item) }, colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    contentColor = Color.Red
+                )) {
+                    Text("Delete")
+                }
+            }
+        }
+    )
+}
+
+fun updateItemInFirestore(
+    item: Item,
+    firestore: FirebaseFirestore,
+    onComplete: () -> Unit
+) {
+    firestore.collection("items")
+        .whereEqualTo("itemCode", item.itemCode)
+        .get()
+        .addOnSuccessListener { result ->
+            val document = result.documents.firstOrNull()
+            document?.reference?.update(
+                "name", item.name,
+                "room", item.room
+            )?.addOnSuccessListener {
+                println("Item updated successfully!")
+                onComplete()
+            }?.addOnFailureListener { exception ->
+                println("Error updating item: ${exception.message}")
+            }
+        }
+        .addOnFailureListener { exception ->
+            println("Error finding item: ${exception.message}")
+        }
+}
+
+fun deleteItemFromFirestore(
+    item: Item,
+    firestore: FirebaseFirestore,
+    onComplete: () -> Unit
+) {
+    firestore.collection("items")
+        .whereEqualTo("itemCode", item.itemCode)
+        .get()
+        .addOnSuccessListener { result ->
+            val document = result.documents.firstOrNull()
+            document?.reference?.delete()
+                ?.addOnSuccessListener {
+                    println("Item deleted successfully!")
+                    onComplete()
+                }
+                ?.addOnFailureListener { exception ->
+                    println("Error deleting item: ${exception.message}")
+                }
+        }
+        .addOnFailureListener { exception ->
+            println("Error finding item: ${exception.message}")
+        }
+}
+
+fun fetchItemsFromFirestore(
+    firestore: FirebaseFirestore,
+    onComplete: (List<Item>) -> Unit
+) {
+    firestore.collection("items")
+        .get()
+        .addOnSuccessListener { result ->
+            val items = result.map { document ->
+                Item(
+                    name = document.getString("name") ?: "",
+                    room = document.getString("room") ?: "",
+                    itemCode = document.getString("itemCode") ?: ""
+                )
+            }
+            onComplete(items)
+        }
+        .addOnFailureListener { exception ->
+            println("Error fetching items: ${exception.message}")
+        }
+}
+
 
 
 // Adjusted AddItemToFirestore function to remove master field
@@ -164,49 +338,3 @@ fun addItemToFirestore(
         }
 }
 
-
-// Dialog for adding a new item
-@Composable
-fun AddItemDialog(
-    onDismiss: () -> Unit,
-    onSubmit: (String, String) -> Unit,
-    name: MutableState<String>,
-    room: MutableState<String>
-) {
-    androidx.compose.material3.AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Add New Item") },
-        text = {
-            Column {
-                TextField(
-                    value = name.value,
-                    onValueChange = { name.value = it },
-                    label = { Text("Item Name") },
-                    modifier = Modifier.padding(8.dp)
-                )
-                TextField(
-                    value = room.value,
-                    onValueChange = { room.value = it },
-                    label = { Text("Room") },
-                    modifier = Modifier.padding(8.dp)
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (name.value.isNotEmpty() && room.value.isNotEmpty()) {
-                        onSubmit(name.value, room.value)
-                    }
-                }
-            ) {
-                Text("OK")
-            }
-        },
-        dismissButton = {
-            Button(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
-    )
-}
